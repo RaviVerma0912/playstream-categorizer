@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
 import { fetchPlaylist, fetchMockPlaylist } from "@/services/iptvService";
@@ -77,6 +78,7 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadFavorites();
     loadWatchHistory();
+    refreshPlaylist(); // Automatically load the playlist when the component mounts
   }, []);
 
   useEffect(() => {
@@ -103,31 +105,43 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     
     try {
+      // First try to fetch the actual playlist
       const data = await fetchPlaylist();
       
       if (data.categories.length === 0) {
+        // If no categories were found in the actual playlist, load the mock playlist
+        console.log("No categories found in actual playlist, loading mock data");
         const mockData = await fetchMockPlaylist();
         setPlaylist(mockData);
+        
+        if (mockData.categories.length > 0) {
+          setSelectedCategory(mockData.categories[0]);
+        }
+        
         toast({
           title: "Using Demo Data",
           description: "Unable to load the actual playlist. Showing demo content instead.",
           variant: "destructive",
         });
       } else {
+        console.log(`Loaded playlist with ${data.categories.length} categories and ${data.allChannels.length} channels`);
         setPlaylist(data);
+        
+        if (data.categories.length > 0 && !selectedCategory) {
+          setSelectedCategory(data.categories[0]);
+        }
+        
         toast({
           title: "Playlist Loaded",
           description: `Successfully loaded ${data.allChannels.length} channels in ${data.categories.length} categories.`,
         });
       }
-      
-      if (data.categories.length > 0 && !selectedCategory) {
-        setSelectedCategory(data.categories[0]);
-      }
     } catch (err) {
       console.error("Failed to load playlist:", err);
       setError("Failed to load playlist. Please try again later.");
       
+      // Load mock data as fallback
+      console.log("Loading mock data as fallback");
       const mockData = await fetchMockPlaylist();
       setPlaylist(mockData);
       

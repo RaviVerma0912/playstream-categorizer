@@ -6,40 +6,26 @@ const PLAYLIST_URL = "https://sprl.in/Shailu_Indian_chanels_follow_iptvlinksp-m3
 
 export async function fetchPlaylist(): Promise<IPTVPlaylist> {
   try {
-    // First try using our Supabase Edge Function which handles CORS and caching
-    const { data, error } = await supabase.functions.invoke('fetch-playlist');
+    console.log("Attempting to fetch playlist...");
     
-    if (error) {
-      console.error("Edge function error:", error);
-      // Fall back to direct fetching if edge function fails
-      return fetchDirectPlaylist();
-    }
-    
-    return data;
-  } catch (error) {
-    console.error("Error fetching playlist from edge function:", error);
-    // Fall back to direct fetching if edge function fails
-    return fetchDirectPlaylist();
-  }
-}
-
-async function fetchDirectPlaylist(): Promise<IPTVPlaylist> {
-  try {
-    // Try direct fetch with CORS proxy as fallback
-    const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+    // Try direct fetch with a CORS proxy
+    const CORS_PROXY = "https://corsproxy.io/?";
     
     const response = await fetch(`${CORS_PROXY}${PLAYLIST_URL}`);
     
     if (!response.ok) {
+      console.error(`Failed to fetch playlist: ${response.status}`);
       throw new Error(`Failed to fetch playlist: ${response.status}`);
     }
     
+    console.log("Playlist fetched successfully, parsing content...");
     const data = await response.text();
     return parseM3U(data);
   } catch (error) {
     console.error("Error fetching playlist directly:", error);
-    // Return empty playlist on error
-    return { categories: [], allChannels: [] };
+    // Return mock playlist on error since edge function isn't available yet
+    console.log("Returning mock playlist due to fetch error");
+    return fetchMockPlaylist();
   }
 }
 
@@ -109,6 +95,7 @@ function parseM3U(content: string): IPTVPlaylist {
 }
 
 export async function fetchMockPlaylist(): Promise<IPTVPlaylist> {
+  console.log("Generating mock playlist data");
   // For testing when API is not available
   const mockCategories = [
     "Entertainment", 
@@ -147,6 +134,7 @@ export async function fetchMockPlaylist(): Promise<IPTVPlaylist> {
     });
   });
   
+  console.log(`Generated mock playlist with ${categories.length} categories and ${allChannels.length} channels`);
   return {
     categories,
     allChannels,
