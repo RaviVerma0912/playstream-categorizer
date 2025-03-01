@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { IPTVProvider, useIPTV } from "@/contexts/IPTVContext";
 import CategorySelector from "@/components/CategorySelector";
@@ -279,7 +278,6 @@ const IPTVApp = () => {
   );
 };
 
-// Wrap the app with the provider
 const Index = () => (
   <IPTVProvider>
     <IPTVApp />

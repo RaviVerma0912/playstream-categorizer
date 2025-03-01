@@ -2,31 +2,86 @@
 import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
 import { supabase } from "@/integrations/supabase/client";
 
+// Original playlist URL
 const PLAYLIST_URL = "https://sprl.in/Shailu_Indian_chanels_follow_iptvlinksp-m3u";
 
+// Alternative playlist URLs for fallback
+const ALTERNATIVE_PLAYLISTS = [
+  "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/in.m3u", // India channels
+  "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/us.m3u", // US channels
+  "https://iptv-org.github.io/iptv/index.m3u", // Global index
+];
+
+// Multiple CORS proxies to try
+const CORS_PROXIES = [
+  "https://corsproxy.io/?",
+  "https://cors.eu.org/",
+  "https://cors-proxy.fringe.zone/",
+  "", // Direct attempt without proxy (for GitHub URLs)
+];
+
 export async function fetchPlaylist(): Promise<IPTVPlaylist> {
-  try {
-    console.log("Attempting to fetch playlist...");
-    
-    // Try direct fetch with a CORS proxy
-    const CORS_PROXY = "https://corsproxy.io/?";
-    
-    const response = await fetch(`${CORS_PROXY}${PLAYLIST_URL}`);
-    
-    if (!response.ok) {
-      console.error(`Failed to fetch playlist: ${response.status}`);
-      throw new Error(`Failed to fetch playlist: ${response.status}`);
-    }
-    
-    console.log("Playlist fetched successfully, parsing content...");
-    const data = await response.text();
-    return parseM3U(data);
-  } catch (error) {
-    console.error("Error fetching playlist directly:", error);
-    // Return mock playlist on error since edge function isn't available yet
-    console.log("Returning mock playlist due to fetch error");
-    return fetchMockPlaylist();
+  console.log("Starting playlist fetch process...");
+  
+  // First try the main playlist with different proxies
+  const mainResult = await tryFetchWithProxies(PLAYLIST_URL);
+  if (mainResult) {
+    console.log("Successfully fetched main playlist");
+    return mainResult;
   }
+  
+  // If main playlist fails, try alternative playlists
+  console.log("Main playlist failed, trying alternatives...");
+  for (const altPlaylist of ALTERNATIVE_PLAYLISTS) {
+    console.log(`Trying alternative playlist: ${altPlaylist}`);
+    const altResult = await tryFetchWithProxies(altPlaylist);
+    if (altResult) {
+      console.log(`Successfully fetched alternative playlist: ${altPlaylist}`);
+      return altResult;
+    }
+  }
+  
+  // If all remote fetches fail, return mock data
+  console.log("All remote playlists failed, returning mock data");
+  return fetchMockPlaylist();
+}
+
+async function tryFetchWithProxies(playlistUrl: string): Promise<IPTVPlaylist | null> {
+  for (const proxy of CORS_PROXIES) {
+    try {
+      console.log(`Attempting fetch with ${proxy ? proxy : 'direct access'} for ${playlistUrl}`);
+      const fullUrl = `${proxy}${playlistUrl}`;
+      
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/plain, application/x-mpegURL, */*',
+        },
+        // Add a timeout to prevent hanging requests
+        signal: AbortSignal.timeout(10000)
+      });
+      
+      if (!response.ok) {
+        console.warn(`Failed to fetch with ${proxy ? proxy : 'direct access'}: ${response.status}`);
+        continue;
+      }
+      
+      console.log(`Success with ${proxy ? proxy : 'direct access'}`);
+      const data = await response.text();
+      
+      // If the data doesn't look like an M3U file, skip it
+      if (!data.trim().startsWith('#EXTM3U')) {
+        console.warn('Response doesn\'t appear to be a valid M3U file');
+        continue;
+      }
+      
+      return parseM3U(data);
+    } catch (error) {
+      console.warn(`Error with ${proxy ? proxy : 'direct access'}:`, error);
+    }
+  }
+  
+  return null;
 }
 
 function parseM3U(content: string): IPTVPlaylist {
@@ -88,6 +143,7 @@ function parseM3U(content: string): IPTVPlaylist {
     channels,
   }));
   
+  console.log(`Parsed M3U: Found ${channels.length} channels in ${categoriesArray.length} categories`);
   return {
     categories: categoriesArray,
     allChannels: channels,

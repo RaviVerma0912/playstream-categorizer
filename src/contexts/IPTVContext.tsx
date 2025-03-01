@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
 import { fetchPlaylist, fetchMockPlaylist } from "@/services/iptvService";
@@ -105,40 +104,28 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     
     try {
-      // First try to fetch the actual playlist
+      console.log("Refreshing playlist with improved fetch mechanism...");
       const data = await fetchPlaylist();
       
-      if (data.categories.length === 0) {
-        // If no categories were found in the actual playlist, load the mock playlist
-        console.log("No categories found in actual playlist, loading mock data");
-        const mockData = await fetchMockPlaylist();
-        setPlaylist(mockData);
-        
-        if (mockData.categories.length > 0) {
-          setSelectedCategory(mockData.categories[0]);
-        }
-        
-        toast({
-          title: "Using Demo Data",
-          description: "Unable to load the actual playlist. Showing demo content instead.",
-          variant: "destructive",
-        });
-      } else {
-        console.log(`Loaded playlist with ${data.categories.length} categories and ${data.allChannels.length} channels`);
-        setPlaylist(data);
-        
-        if (data.categories.length > 0 && !selectedCategory) {
-          setSelectedCategory(data.categories[0]);
-        }
-        
-        toast({
-          title: "Playlist Loaded",
-          description: `Successfully loaded ${data.allChannels.length} channels in ${data.categories.length} categories.`,
-        });
+      if (!data || data.categories.length === 0 || data.allChannels.length === 0) {
+        console.warn("No valid data in playlist response");
+        throw new Error("No valid channels found in playlist");
       }
+      
+      console.log(`Successfully loaded playlist with ${data.categories.length} categories and ${data.allChannels.length} channels`);
+      setPlaylist(data);
+      
+      if (data.categories.length > 0 && (!selectedCategory || !data.categories.some(c => c.id === selectedCategory.id))) {
+        setSelectedCategory(data.categories[0]);
+      }
+      
+      toast({
+        title: "Playlist Loaded",
+        description: `Successfully loaded ${data.allChannels.length} channels in ${data.categories.length} categories.`,
+      });
     } catch (err) {
       console.error("Failed to load playlist:", err);
-      setError("Failed to load playlist. Please try again later.");
+      setError("Failed to load playlist. Showing sample data instead.");
       
       // Load mock data as fallback
       console.log("Loading mock data as fallback");
@@ -150,8 +137,8 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
       }
       
       toast({
-        title: "Error Loading Playlist",
-        description: "Falling back to demo content.",
+        title: "Using Sample Data",
+        description: "Unable to load real channels. Showing sample content instead.",
         variant: "destructive",
       });
     } finally {
