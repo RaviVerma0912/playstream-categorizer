@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
 import { fetchPlaylist, fetchMockPlaylist } from "@/services/iptvService";
@@ -33,18 +32,15 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
   const [watchHistory, setWatchHistory] = useState<{ channel: IPTVChannel; timestamp: number }[]>([]);
   const { toast } = useToast();
 
-  // Load favorites from Supabase or localStorage
   const loadFavorites = async () => {
     try {
-      // Try to get favorites from Supabase if available
       const { data, error } = await supabase
         .from('channels')
         .select('*')
-        .eq('status', 'favorite');
+        .eq('status', 'online');
 
       if (error) {
         console.error('Error loading favorites:', error);
-        // Fallback to localStorage
         const storedFavorites = localStorage.getItem('favoriteChannels');
         if (storedFavorites) {
           setFavoriteChannels(JSON.parse(storedFavorites));
@@ -53,7 +49,6 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data && data.length > 0) {
-        // Convert Supabase data to IPTVChannel format
         const favChannels = data.map(item => ({
           id: item.id,
           name: item.title,
@@ -65,7 +60,6 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       console.error('Failed to load favorites:', err);
-      // Fallback to localStorage
       const storedFavorites = localStorage.getItem('favoriteChannels');
       if (storedFavorites) {
         setFavoriteChannels(JSON.parse(storedFavorites));
@@ -73,7 +67,6 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Load watch history from localStorage
   const loadWatchHistory = () => {
     const storedHistory = localStorage.getItem('watchHistory');
     if (storedHistory) {
@@ -86,7 +79,6 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     loadWatchHistory();
   }, []);
 
-  // Save watch history when selected channel changes
   useEffect(() => {
     if (selectedChannel) {
       const newHistoryItem = {
@@ -94,13 +86,12 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
         timestamp: Date.now(),
       };
 
-      // Update history - add to beginning, remove duplicates
       setWatchHistory(prevHistory => {
         const filteredHistory = prevHistory.filter(
           item => item.channel.id !== selectedChannel.id
         );
         
-        const updatedHistory = [newHistoryItem, ...filteredHistory].slice(0, 20); // Keep last 20 items
+        const updatedHistory = [newHistoryItem, ...filteredHistory].slice(0, 20);
         localStorage.setItem('watchHistory', JSON.stringify(updatedHistory));
         return updatedHistory;
       });
@@ -112,10 +103,8 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     
     try {
-      // Try to fetch real playlist first
       const data = await fetchPlaylist();
       
-      // If we get no categories, fall back to mock data
       if (data.categories.length === 0) {
         const mockData = await fetchMockPlaylist();
         setPlaylist(mockData);
@@ -132,7 +121,6 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
         });
       }
       
-      // Select the first category by default
       if (data.categories.length > 0 && !selectedCategory) {
         setSelectedCategory(data.categories[0]);
       }
@@ -140,11 +128,9 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
       console.error("Failed to load playlist:", err);
       setError("Failed to load playlist. Please try again later.");
       
-      // Load mock data when real data fails
       const mockData = await fetchMockPlaylist();
       setPlaylist(mockData);
       
-      // Select the first category by default
       if (mockData.categories.length > 0) {
         setSelectedCategory(mockData.categories[0]);
       }
@@ -164,10 +150,8 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     
     try {
       if (isFav) {
-        // Remove from favorites
         setFavoriteChannels(prev => prev.filter(ch => ch.id !== channel.id));
         
-        // Try to remove from Supabase
         try {
           const { error } = await supabase
             .from('channels')
@@ -184,35 +168,30 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
           description: `${channel.name} has been removed from your favorites.`,
         });
       } else {
-        // Add to favorites
         setFavoriteChannels(prev => [...prev, channel]);
         
-        // Try to add to Supabase
         try {
-          // Check if channel exists first
           const { data } = await supabase
             .from('channels')
             .select('id')
             .eq('id', channel.id);
             
           if (data && data.length > 0) {
-            // Update existing record
             await supabase
               .from('channels')
               .update({ 
-                status: 'favorite',
+                status: 'online',
                 title: channel.name,
                 stream_url: channel.url,
                 thumbnail_url: channel.logo || null
               })
               .eq('id', channel.id);
           } else {
-            // Insert new record
             await supabase
               .from('channels')
               .insert({
                 id: channel.id,
-                status: 'favorite',
+                status: 'online',
                 title: channel.name,
                 stream_url: channel.url,
                 thumbnail_url: channel.logo || null
@@ -228,7 +207,6 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
         });
       }
       
-      // Update localStorage as fallback
       localStorage.setItem('favoriteChannels', JSON.stringify(
         isFav 
           ? favoriteChannels.filter(ch => ch.id !== channel.id)

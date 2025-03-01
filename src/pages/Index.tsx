@@ -5,7 +5,7 @@ import CategorySelector from "@/components/CategorySelector";
 import ChannelGrid from "@/components/ChannelGrid";
 import VideoPlayer from "@/components/VideoPlayer";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, List, History, Heart, X } from "lucide-react";
+import { RefreshCw, List, History, Heart, X, Tv } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
