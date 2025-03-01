@@ -1,7 +1,8 @@
 
 import React, { useRef, useEffect } from "react";
 import { IPTVChannel } from "@/types/iptv";
-import { Button } from "@/components/ui/card";
+// Fix the Button import by importing from the correct location
+import { Button } from "@/components/ui/button";
 import { Volume2, VolumeX, Maximize, Play, Pause } from "lucide-react";
 
 interface VideoPlayerProps {

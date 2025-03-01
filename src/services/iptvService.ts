@@ -1,5 +1,4 @@
-
-import { IPTVChannel, IPTVPlaylist } from "@/types/iptv";
+import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
 
 const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
 const PLAYLIST_URL = "https://sprl.in/Shailu_Indian_chanels_follow_iptvlinksp-m3u";
