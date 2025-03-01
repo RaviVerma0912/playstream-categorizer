@@ -2,15 +2,24 @@
 import React from "react";
 import { IPTVChannel } from "@/types/iptv";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tv } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tv, Heart } from "lucide-react";
 
 interface ChannelCardProps {
   channel: IPTVChannel;
   isActive: boolean;
   onClick: () => void;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
-const ChannelCard = ({ channel, isActive, onClick }: ChannelCardProps) => {
+const ChannelCard = ({ 
+  channel, 
+  isActive, 
+  onClick,
+  isFavorite = false,
+  onToggleFavorite
+}: ChannelCardProps) => {
   return (
     <Card 
       className={`channel-card cursor-pointer h-full transition-all ${
@@ -18,9 +27,22 @@ const ChannelCard = ({ channel, isActive, onClick }: ChannelCardProps) => {
           ? "border-primary border-2 shadow-md" 
           : "hover:shadow-lg"
       }`}
-      onClick={onClick}
     >
-      <CardContent className="p-3 flex flex-col items-center justify-center h-full">
+      <CardContent className="p-3 flex flex-col items-center justify-center h-full relative" onClick={onClick}>
+        {onToggleFavorite && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-1 right-1 h-6 w-6"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+          >
+            <Heart className={`h-4 w-4 ${isFavorite ? "fill-primary text-primary" : ""}`} />
+          </Button>
+        )}
+        
         <div className="w-full aspect-square rounded-md overflow-hidden bg-muted flex items-center justify-center mb-2">
           {channel.logo ? (
             <img 

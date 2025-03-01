@@ -1,12 +1,33 @@
-import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
 
-const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
+import { supabase } from "@/integrations/supabase/client";
+
 const PLAYLIST_URL = "https://sprl.in/Shailu_Indian_chanels_follow_iptvlinksp-m3u";
 
 export async function fetchPlaylist(): Promise<IPTVPlaylist> {
   try {
-    // For development, we need to use a CORS proxy
-    // In production, this should be handled server-side
+    // First try using our Supabase Edge Function which handles CORS and caching
+    const { data, error } = await supabase.functions.invoke('fetch-playlist');
+    
+    if (error) {
+      console.error("Edge function error:", error);
+      // Fall back to direct fetching if edge function fails
+      return fetchDirectPlaylist();
+    }
+    
+    return data;
+  } catch (error) {
+    console.error("Error fetching playlist from edge function:", error);
+    // Fall back to direct fetching if edge function fails
+    return fetchDirectPlaylist();
+  }
+}
+
+async function fetchDirectPlaylist(): Promise<IPTVPlaylist> {
+  try {
+    // Try direct fetch with CORS proxy as fallback
+    const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+    
     const response = await fetch(`${CORS_PROXY}${PLAYLIST_URL}`);
     
     if (!response.ok) {
@@ -16,7 +37,7 @@ export async function fetchPlaylist(): Promise<IPTVPlaylist> {
     const data = await response.text();
     return parseM3U(data);
   } catch (error) {
-    console.error("Error fetching playlist:", error);
+    console.error("Error fetching playlist directly:", error);
     // Return empty playlist on error
     return { categories: [], allChannels: [] };
   }

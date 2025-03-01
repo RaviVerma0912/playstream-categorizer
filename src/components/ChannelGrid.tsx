@@ -8,12 +8,16 @@ interface ChannelGridProps {
   category: IPTVCategory | null;
   selectedChannel: IPTVChannel | null;
   onSelectChannel: (channel: IPTVChannel) => void;
+  onToggleFavorite?: (channel: IPTVChannel) => void;
+  favoriteChannels?: IPTVChannel[];
 }
 
 const ChannelGrid = ({ 
   category, 
   selectedChannel, 
-  onSelectChannel 
+  onSelectChannel,
+  onToggleFavorite,
+  favoriteChannels = []
 }: ChannelGridProps) => {
   if (!category) {
     return (
@@ -33,13 +37,15 @@ const ChannelGrid = ({
       </div>
       
       <ScrollArea className="h-[calc(100vh-400px)] pr-4">
-        <div className="channel-grid pb-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 pb-4">
           {category.channels.map((channel) => (
             <ChannelCard
               key={channel.id}
               channel={channel}
               isActive={selectedChannel?.id === channel.id}
               onClick={() => onSelectChannel(channel)}
+              isFavorite={favoriteChannels.some(c => c.id === channel.id)}
+              onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(channel) : undefined}
             />
           ))}
         </div>

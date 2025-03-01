@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
 import { fetchPlaylist, fetchMockPlaylist } from "@/services/iptvService";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface IPTVContextType {
   playlist: IPTVPlaylist;
@@ -10,9 +11,14 @@ interface IPTVContextType {
   error: string | null;
   selectedCategory: IPTVCategory | null;
   selectedChannel: IPTVChannel | null;
+  favoriteChannels: IPTVChannel[];
+  watchHistory: { channel: IPTVChannel; timestamp: number }[];
   setSelectedCategory: (category: IPTVCategory | null) => void;
   setSelectedChannel: (channel: IPTVChannel | null) => void;
   refreshPlaylist: () => Promise<void>;
+  toggleFavorite: (channel: IPTVChannel) => Promise<void>;
+  isFavorite: (channelId: string) => boolean;
+  clearHistory: () => Promise<void>;
 }
 
 const IPTVContext = createContext<IPTVContextType | undefined>(undefined);
@@ -23,7 +29,83 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<IPTVCategory | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<IPTVChannel | null>(null);
+  const [favoriteChannels, setFavoriteChannels] = useState<IPTVChannel[]>([]);
+  const [watchHistory, setWatchHistory] = useState<{ channel: IPTVChannel; timestamp: number }[]>([]);
   const { toast } = useToast();
+
+  // Load favorites from Supabase or localStorage
+  const loadFavorites = async () => {
+    try {
+      // Try to get favorites from Supabase if available
+      const { data, error } = await supabase
+        .from('channels')
+        .select('*')
+        .eq('status', 'favorite');
+
+      if (error) {
+        console.error('Error loading favorites:', error);
+        // Fallback to localStorage
+        const storedFavorites = localStorage.getItem('favoriteChannels');
+        if (storedFavorites) {
+          setFavoriteChannels(JSON.parse(storedFavorites));
+        }
+        return;
+      }
+
+      if (data && data.length > 0) {
+        // Convert Supabase data to IPTVChannel format
+        const favChannels = data.map(item => ({
+          id: item.id,
+          name: item.title,
+          logo: item.thumbnail_url || undefined,
+          group: 'Favorites',
+          url: item.stream_url,
+        }));
+        setFavoriteChannels(favChannels);
+      }
+    } catch (err) {
+      console.error('Failed to load favorites:', err);
+      // Fallback to localStorage
+      const storedFavorites = localStorage.getItem('favoriteChannels');
+      if (storedFavorites) {
+        setFavoriteChannels(JSON.parse(storedFavorites));
+      }
+    }
+  };
+
+  // Load watch history from localStorage
+  const loadWatchHistory = () => {
+    const storedHistory = localStorage.getItem('watchHistory');
+    if (storedHistory) {
+      setWatchHistory(JSON.parse(storedHistory));
+    }
+  };
+
+  useEffect(() => {
+    loadFavorites();
+    loadWatchHistory();
+  }, []);
+
+  // Save watch history when selected channel changes
+  useEffect(() => {
+    if (selectedChannel) {
+      const newHistoryItem = {
+        channel: selectedChannel,
+        timestamp: Date.now(),
+      };
+
+      // Update history - add to beginning, remove duplicates
+      setWatchHistory(prevHistory => {
+        const filteredHistory = prevHistory.filter(
+          item => item.channel.id !== selectedChannel.id
+        );
+        
+        const updatedHistory = [newHistoryItem, ...filteredHistory].slice(0, 20); // Keep last 20 items
+        localStorage.setItem('watchHistory', JSON.stringify(updatedHistory));
+        return updatedHistory;
+      });
+    }
+  }, [selectedChannel]);
 
   const refreshPlaylist = async () => {
     setIsLoading(true);
@@ -77,9 +159,103 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  useEffect(() => {
-    refreshPlaylist();
-  }, []);
+  const toggleFavorite = async (channel: IPTVChannel) => {
+    const isFav = isFavorite(channel.id);
+    
+    try {
+      if (isFav) {
+        // Remove from favorites
+        setFavoriteChannels(prev => prev.filter(ch => ch.id !== channel.id));
+        
+        // Try to remove from Supabase
+        try {
+          const { error } = await supabase
+            .from('channels')
+            .update({ status: 'offline' })
+            .eq('id', channel.id);
+            
+          if (error) throw error;
+        } catch (err) {
+          console.error('Error updating Supabase:', err);
+        }
+        
+        toast({
+          title: "Removed from Favorites",
+          description: `${channel.name} has been removed from your favorites.`,
+        });
+      } else {
+        // Add to favorites
+        setFavoriteChannels(prev => [...prev, channel]);
+        
+        // Try to add to Supabase
+        try {
+          // Check if channel exists first
+          const { data } = await supabase
+            .from('channels')
+            .select('id')
+            .eq('id', channel.id);
+            
+          if (data && data.length > 0) {
+            // Update existing record
+            await supabase
+              .from('channels')
+              .update({ 
+                status: 'favorite',
+                title: channel.name,
+                stream_url: channel.url,
+                thumbnail_url: channel.logo || null
+              })
+              .eq('id', channel.id);
+          } else {
+            // Insert new record
+            await supabase
+              .from('channels')
+              .insert({
+                id: channel.id,
+                status: 'favorite',
+                title: channel.name,
+                stream_url: channel.url,
+                thumbnail_url: channel.logo || null
+              });
+          }
+        } catch (err) {
+          console.error('Error updating Supabase:', err);
+        }
+        
+        toast({
+          title: "Added to Favorites",
+          description: `${channel.name} has been added to your favorites.`,
+        });
+      }
+      
+      // Update localStorage as fallback
+      localStorage.setItem('favoriteChannels', JSON.stringify(
+        isFav 
+          ? favoriteChannels.filter(ch => ch.id !== channel.id)
+          : [...favoriteChannels, channel]
+      ));
+    } catch (err) {
+      console.error('Error toggling favorite:', err);
+      toast({
+        title: "Error",
+        description: "Failed to update favorites. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const isFavorite = (channelId: string) => {
+    return favoriteChannels.some(ch => ch.id === channelId);
+  };
+
+  const clearHistory = async () => {
+    setWatchHistory([]);
+    localStorage.removeItem('watchHistory');
+    toast({
+      title: "History Cleared",
+      description: "Your watch history has been cleared.",
+    });
+  };
 
   const value = {
     playlist,
@@ -87,9 +263,14 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     error,
     selectedCategory,
     selectedChannel,
+    favoriteChannels,
+    watchHistory,
     setSelectedCategory,
     setSelectedChannel,
     refreshPlaylist,
+    toggleFavorite,
+    isFavorite,
+    clearHistory,
   };
 
   return <IPTVContext.Provider value={value}>{children}</IPTVContext.Provider>;
