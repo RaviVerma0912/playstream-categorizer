@@ -1,4 +1,5 @@
-import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
+
+import { IPTVChannel, IPTVPlaylist, IPTVCategory, PlaylistUrl } from "@/types/iptv";
 import { supabase } from "@/integrations/supabase/client";
 
 // Default fallback playlist URLs if no custom playlists are available
@@ -30,7 +31,7 @@ export async function fetchPlaylist(): Promise<IPTVPlaylist> {
     if (!error && playlistUrls && playlistUrls.length > 0) {
       console.log(`Found ${playlistUrls.length} custom playlists in database`);
       
-      for (const playlistItem of playlistUrls) {
+      for (const playlistItem of playlistUrls as PlaylistUrl[]) {
         console.log(`Trying custom playlist: ${playlistItem.url}`);
         const result = await tryFetchWithProxies(playlistItem.url);
         if (result) {
@@ -259,7 +260,7 @@ export async function deletePlaylistUrl(id: string): Promise<boolean> {
   }
 }
 
-export async function getPlaylistUrls(): Promise<any[]> {
+export async function getPlaylistUrls(): Promise<PlaylistUrl[]> {
   try {
     const { data, error } = await supabase
       .from('playlist_urls')
@@ -271,7 +272,7 @@ export async function getPlaylistUrls(): Promise<any[]> {
       return [];
     }
     
-    return data || [];
+    return data as PlaylistUrl[] || [];
   } catch (err) {
     console.error('Error fetching playlist URLs:', err);
     return [];

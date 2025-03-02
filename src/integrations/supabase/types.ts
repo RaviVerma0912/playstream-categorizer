@@ -54,6 +54,33 @@ export type Database = {
         }
         Relationships: []
       }
+      playlist_urls: {
+        Row: {
+          active: boolean
+          created_at: string | null
+          id: string
+          name: string
+          priority: number
+          url: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string | null
+          id?: string
+          name: string
+          priority?: number
+          url: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string | null
+          id?: string
+          name?: string
+          priority?: number
+          url?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
