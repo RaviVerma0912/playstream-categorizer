@@ -17,3 +17,12 @@ export interface IPTVPlaylist {
   categories: IPTVCategory[];
   allChannels: IPTVChannel[];
 }
+
+export interface PlaylistUrl {
+  id: string;
+  url: string;
+  name: string;
+  priority: number;
+  active: boolean;
+  created_at?: string;
+}

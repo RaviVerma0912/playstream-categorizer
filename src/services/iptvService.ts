@@ -1,12 +1,8 @@
-
 import { IPTVChannel, IPTVPlaylist, IPTVCategory } from "@/types/iptv";
 import { supabase } from "@/integrations/supabase/client";
 
-// Original playlist URL
-const PLAYLIST_URL = "https://sprl.in/Shailu_Indian_chanels_follow_iptvlinksp-m3u";
-
-// Alternative playlist URLs for fallback
-const ALTERNATIVE_PLAYLISTS = [
+// Default fallback playlist URLs if no custom playlists are available
+const DEFAULT_PLAYLISTS = [
   "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/in.m3u", // India channels
   "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/us.m3u", // US channels
   "https://iptv-org.github.io/iptv/index.m3u", // Global index
@@ -23,21 +19,40 @@ const CORS_PROXIES = [
 export async function fetchPlaylist(): Promise<IPTVPlaylist> {
   console.log("Starting playlist fetch process...");
   
-  // First try the main playlist with different proxies
-  const mainResult = await tryFetchWithProxies(PLAYLIST_URL);
-  if (mainResult) {
-    console.log("Successfully fetched main playlist");
-    return mainResult;
+  // First try custom playlists from Supabase
+  try {
+    const { data: playlistUrls, error } = await supabase
+      .from('playlist_urls')
+      .select('*')
+      .eq('active', true)
+      .order('priority', { ascending: true });
+    
+    if (!error && playlistUrls && playlistUrls.length > 0) {
+      console.log(`Found ${playlistUrls.length} custom playlists in database`);
+      
+      for (const playlistItem of playlistUrls) {
+        console.log(`Trying custom playlist: ${playlistItem.url}`);
+        const result = await tryFetchWithProxies(playlistItem.url);
+        if (result) {
+          console.log(`Successfully fetched custom playlist: ${playlistItem.url}`);
+          return result;
+        }
+      }
+    } else {
+      console.log("No custom playlists found in database or error occurred, using default playlists");
+    }
+  } catch (err) {
+    console.error("Error fetching custom playlists from database:", err);
   }
   
-  // If main playlist fails, try alternative playlists
-  console.log("Main playlist failed, trying alternatives...");
-  for (const altPlaylist of ALTERNATIVE_PLAYLISTS) {
-    console.log(`Trying alternative playlist: ${altPlaylist}`);
-    const altResult = await tryFetchWithProxies(altPlaylist);
-    if (altResult) {
-      console.log(`Successfully fetched alternative playlist: ${altPlaylist}`);
-      return altResult;
+  // If custom playlists fail, try default playlists
+  console.log("Custom playlists failed or not available, trying default playlists...");
+  for (const defaultPlaylist of DEFAULT_PLAYLISTS) {
+    console.log(`Trying default playlist: ${defaultPlaylist}`);
+    const result = await tryFetchWithProxies(defaultPlaylist);
+    if (result) {
+      console.log(`Successfully fetched default playlist: ${defaultPlaylist}`);
+      return result;
     }
   }
   
@@ -195,4 +210,70 @@ export async function fetchMockPlaylist(): Promise<IPTVPlaylist> {
     categories,
     allChannels,
   };
+}
+
+// Admin-related functions
+export async function addPlaylistUrl(url: string, name: string, priority: number = 10): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('playlist_urls')
+      .insert({
+        url,
+        name,
+        priority,
+        active: true
+      });
+    
+    return !error;
+  } catch (err) {
+    console.error('Error adding playlist URL:', err);
+    return false;
+  }
+}
+
+export async function updatePlaylistUrl(id: string, data: { url?: string, name?: string, priority?: number, active?: boolean }): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('playlist_urls')
+      .update(data)
+      .eq('id', id);
+    
+    return !error;
+  } catch (err) {
+    console.error('Error updating playlist URL:', err);
+    return false;
+  }
+}
+
+export async function deletePlaylistUrl(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('playlist_urls')
+      .delete()
+      .eq('id', id);
+    
+    return !error;
+  } catch (err) {
+    console.error('Error deleting playlist URL:', err);
+    return false;
+  }
+}
+
+export async function getPlaylistUrls(): Promise<any[]> {
+  try {
+    const { data, error } = await supabase
+      .from('playlist_urls')
+      .select('*')
+      .order('priority', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching playlist URLs:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (err) {
+    console.error('Error fetching playlist URLs:', err);
+    return [];
+  }
 }
