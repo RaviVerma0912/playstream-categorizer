@@ -81,7 +81,10 @@ const VideoPlayer = ({ channel, isFavorite = false, onToggleFavorite }: VideoPla
                   .from('channels')
                   .upsert({
                     id: channel.id,
-                    status: 'offline'
+                    status: 'offline',
+                    title: channel.name,
+                    stream_url: channel.url,
+                    thumbnail_url: channel.logo || null
                   })
                   .then(() => console.log("Channel marked as offline"));
               }
@@ -102,7 +105,10 @@ const VideoPlayer = ({ channel, isFavorite = false, onToggleFavorite }: VideoPla
         .from('channels')
         .upsert({
           id: channel.id,
-          status: 'offline'
+          status: 'offline',
+          title: channel.name,
+          stream_url: channel.url,
+          thumbnail_url: channel.logo || null
         })
         .then(() => {
           console.log("Channel marked as offline due to video error");

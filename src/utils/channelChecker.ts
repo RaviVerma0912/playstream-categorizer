@@ -51,13 +51,16 @@ export async function testChannel(channel: IPTVChannel): Promise<boolean> {
  * @param channelId Channel ID
  * @param isWorking Whether the channel is working
  */
-export async function updateChannelStatus(channelId: string, isWorking: boolean): Promise<void> {
+export async function updateChannelStatus(channelId: string, isWorking: boolean, channel: IPTVChannel): Promise<void> {
   try {
     await supabase
       .from('channels')
       .upsert({
         id: channelId,
-        status: isWorking ? 'online' : 'offline'
+        status: isWorking ? 'online' : 'offline',
+        title: channel.name,
+        stream_url: channel.url,
+        thumbnail_url: channel.logo || null
       }, {
         onConflict: 'id'
       });
@@ -85,7 +88,7 @@ export async function batchTestChannels(
     
     await Promise.all(batch.map(async (channel) => {
       const isWorking = await testChannel(channel);
-      await updateChannelStatus(channel.id, isWorking);
+      await updateChannelStatus(channel.id, isWorking, channel);
       
       tested++;
       if (onProgress) {

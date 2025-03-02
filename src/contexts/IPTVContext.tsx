@@ -180,6 +180,21 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const checkChannelStatus = async (channelId: string): Promise<boolean> => {
+    try {
+      const { data } = await supabase
+        .from('channels')
+        .select('status')
+        .eq('id', channelId)
+        .single();
+      
+      return data?.status === 'online';
+    } catch (err) {
+      console.error('Error checking channel status:', err);
+      return true; // Assume working if we can't check
+    }
+  };
+
   const toggleFavorite = async (channel: IPTVChannel) => {
     const isFav = isFavorite(channel.id);
     
@@ -190,7 +205,12 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
         try {
           const { error } = await supabase
             .from('channels')
-            .update({ status: 'offline' })
+            .update({ 
+              status: 'offline',
+              title: channel.name,
+              stream_url: channel.url,
+              thumbnail_url: channel.logo || null
+            })
             .eq('id', channel.id);
             
           if (error) throw error;
@@ -286,21 +306,6 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     setSearching(false);
   };
 
-  const checkChannelStatus = async (channelId: string): Promise<boolean> => {
-    try {
-      const { data } = await supabase
-        .from('channels')
-        .select('status')
-        .eq('id', channelId)
-        .single();
-      
-      return data?.status === 'online';
-    } catch (err) {
-      console.error('Error checking channel status:', err);
-      return true; // Assume working if we can't check
-    }
-  };
-
   const startChannelHealthCheck = async () => {
     if (healthCheckInProgress || playlist.allChannels.length === 0) return;
     
@@ -312,7 +317,9 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
         .slice(0, 10) // Test 10 channels at a time
         .map(channel => ({
           id: channel.id,
-          url: channel.url
+          url: channel.url,
+          name: channel.name,
+          logo: channel.logo
         }));
       
       // Use a web worker or background process to test channels
@@ -330,7 +337,10 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
             .from('channels')
             .upsert({
               id: channel.id,
-              status: isWorking ? 'online' : 'offline'
+              status: isWorking ? 'online' : 'offline',
+              title: channel.name, 
+              stream_url: channel.url,
+              thumbnail_url: channel.logo || null
             }, { 
               onConflict: 'id' 
             });
@@ -344,7 +354,10 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
             .from('channels')
             .upsert({
               id: channel.id,
-              status: 'offline'
+              status: 'offline',
+              title: channel.name,
+              stream_url: channel.url,
+              thumbnail_url: channel.logo || null
             }, { 
               onConflict: 'id' 
             });
