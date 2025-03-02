@@ -12,12 +12,17 @@ interface IPTVContextType {
   selectedChannel: IPTVChannel | null;
   favoriteChannels: IPTVChannel[];
   watchHistory: { channel: IPTVChannel; timestamp: number }[];
+  searchResults: IPTVChannel[];
+  searching: boolean;
   setSelectedCategory: (category: IPTVCategory | null) => void;
   setSelectedChannel: (channel: IPTVChannel | null) => void;
   refreshPlaylist: () => Promise<void>;
   toggleFavorite: (channel: IPTVChannel) => Promise<void>;
   isFavorite: (channelId: string) => boolean;
   clearHistory: () => Promise<void>;
+  searchChannels: (term: string) => void;
+  checkChannelStatus: (channelId: string) => Promise<boolean>;
+  startChannelHealthCheck: () => Promise<void>;
 }
 
 const IPTVContext = createContext<IPTVContextType | undefined>(undefined);
@@ -30,6 +35,9 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
   const [selectedChannel, setSelectedChannel] = useState<IPTVChannel | null>(null);
   const [favoriteChannels, setFavoriteChannels] = useState<IPTVChannel[]>([]);
   const [watchHistory, setWatchHistory] = useState<{ channel: IPTVChannel; timestamp: number }[]>([]);
+  const [searchResults, setSearchResults] = useState<IPTVChannel[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [healthCheckInProgress, setHealthCheckInProgress] = useState(false);
   const { toast } = useToast();
 
   const loadFavorites = async () => {
@@ -113,6 +121,27 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
       }
       
       console.log(`Successfully loaded playlist with ${data.categories.length} categories and ${data.allChannels.length} channels`);
+      
+      // Filter out channels marked as offline in Supabase
+      const { data: offlineChannels } = await supabase
+        .from('channels')
+        .select('id')
+        .eq('status', 'offline');
+      
+      if (offlineChannels && offlineChannels.length > 0) {
+        const offlineIds = new Set(offlineChannels.map(c => c.id));
+        
+        // Filter offline channels from allChannels
+        data.allChannels = data.allChannels.filter(channel => !offlineIds.has(channel.id));
+        
+        // Filter offline channels from each category
+        data.categories.forEach(category => {
+          category.channels = category.channels.filter(channel => !offlineIds.has(channel.id));
+        });
+        
+        console.log(`Filtered out ${offlineChannels.length} offline channels`);
+      }
+      
       setPlaylist(data);
       
       if (data.categories.length > 0 && (!selectedCategory || !data.categories.some(c => c.id === selectedCategory.id))) {
@@ -121,8 +150,13 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
       
       toast({
         title: "Playlist Loaded",
-        description: `Successfully loaded ${data.allChannels.length} channels in ${data.categories.length} categories.`,
+        description: `Successfully loaded ${data.allChannels.length} working channels in ${data.categories.length} categories.`,
       });
+      
+      // Schedule automatic health check
+      if (!healthCheckInProgress) {
+        startChannelHealthCheck();
+      }
     } catch (err) {
       console.error("Failed to load playlist:", err);
       setError("Failed to load playlist. Showing sample data instead.");
@@ -236,6 +270,95 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const searchChannels = (term: string) => {
+    if (!term || term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setSearching(true);
+    const results = playlist.allChannels.filter(channel => 
+      channel.name.toLowerCase().includes(term.toLowerCase()) ||
+      channel.group.toLowerCase().includes(term.toLowerCase())
+    );
+    
+    setSearchResults(results);
+    setSearching(false);
+  };
+
+  const checkChannelStatus = async (channelId: string): Promise<boolean> => {
+    try {
+      const { data } = await supabase
+        .from('channels')
+        .select('status')
+        .eq('id', channelId)
+        .single();
+      
+      return data?.status === 'online';
+    } catch (err) {
+      console.error('Error checking channel status:', err);
+      return true; // Assume working if we can't check
+    }
+  };
+
+  const startChannelHealthCheck = async () => {
+    if (healthCheckInProgress || playlist.allChannels.length === 0) return;
+    
+    setHealthCheckInProgress(true);
+    
+    try {
+      // Only test a small batch of channels at a time to avoid overwhelming the system
+      const channelsToTest = playlist.allChannels
+        .slice(0, 10) // Test 10 channels at a time
+        .map(channel => ({
+          id: channel.id,
+          url: channel.url
+        }));
+      
+      // Use a web worker or background process to test channels
+      for (const channel of channelsToTest) {
+        try {
+          // Simple fetch test to see if URL is reachable
+          const response = await fetch(channel.url, { 
+            method: 'HEAD',
+            signal: AbortSignal.timeout(5000) // 5 second timeout
+          });
+          
+          const isWorking = response.ok;
+          
+          await supabase
+            .from('channels')
+            .upsert({
+              id: channel.id,
+              status: isWorking ? 'online' : 'offline'
+            }, { 
+              onConflict: 'id' 
+            });
+          
+          if (!isWorking) {
+            console.log(`Marked channel ${channel.id} as offline`);
+          }
+        } catch (err) {
+          // If fetch fails, mark channel as offline
+          await supabase
+            .from('channels')
+            .upsert({
+              id: channel.id,
+              status: 'offline'
+            }, { 
+              onConflict: 'id' 
+            });
+          
+          console.log(`Marked channel ${channel.id} as offline due to error:`, err);
+        }
+      }
+    } catch (err) {
+      console.error('Error during channel health check:', err);
+    } finally {
+      setHealthCheckInProgress(false);
+    }
+  };
+
   const value = {
     playlist,
     isLoading,
@@ -244,12 +367,17 @@ export function IPTVProvider({ children }: { children: React.ReactNode }) {
     selectedChannel,
     favoriteChannels,
     watchHistory,
+    searchResults,
+    searching,
     setSelectedCategory,
     setSelectedChannel,
     refreshPlaylist,
     toggleFavorite,
     isFavorite,
     clearHistory,
+    searchChannels,
+    checkChannelStatus,
+    startChannelHealthCheck,
   };
 
   return <IPTVContext.Provider value={value}>{children}</IPTVContext.Provider>;

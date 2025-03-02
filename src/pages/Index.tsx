@@ -1,8 +1,10 @@
+
 import React, { useState } from "react";
 import { IPTVProvider, useIPTV } from "@/contexts/IPTVContext";
 import CategorySelector from "@/components/CategorySelector";
 import ChannelGrid from "@/components/ChannelGrid";
 import VideoPlayer from "@/components/VideoPlayer";
+import SearchBox from "@/components/SearchBox";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, List, Heart, X, Tv, Search, Settings, History } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -240,9 +242,12 @@ const IPTVApp = () => {
             </Button>
           </div>
         </div>
-        <p className="text-muted-foreground">
-          {playlist.allChannels.length} channels in {playlist.categories.length} categories
-        </p>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-4">
+          <p className="text-muted-foreground">
+            {playlist.allChannels.length} channels in {playlist.categories.length} categories
+          </p>
+          <SearchBox onSelectChannel={setSelectedChannel} />
+        </div>
       </header>
 
       <main className="flex-1 flex flex-col space-y-6">
