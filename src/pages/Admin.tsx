@@ -7,14 +7,18 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Trash2, 
   Plus, 
   Save, 
   RefreshCw, 
-  ArrowLeft
+  ArrowLeft,
+  Upload,
+  List
 } from "lucide-react";
-import { addPlaylistUrl, updatePlaylistUrl, deletePlaylistUrl, getPlaylistUrls, fetchPlaylist } from "@/services/iptvService";
+import { addPlaylistUrl, updatePlaylistUrl, deletePlaylistUrl, getPlaylistUrls, fetchPlaylist, bulkAddPlaylistUrls } from "@/services/iptvService";
 import { PlaylistUrl } from "@/types/iptv";
 import { Link } from "react-router-dom";
 
@@ -23,8 +27,10 @@ const Admin = () => {
   const [newUrl, setNewUrl] = useState("");
   const [newName, setNewName] = useState("");
   const [newPriority, setNewPriority] = useState(10);
+  const [bulkUrls, setBulkUrls] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
   const { toast } = useToast();
 
   const loadPlaylistUrls = async () => {
@@ -66,6 +72,47 @@ const Admin = () => {
       toast({
         title: "Error",
         description: "Failed to add playlist URL",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleBulkUpload = async () => {
+    if (!bulkUrls.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter at least one URL",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const urls = bulkUrls.split('\n').filter(url => url.trim() !== '');
+    
+    if (urls.length === 0) {
+      toast({
+        title: "Error",
+        description: "No valid URLs found",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsBulkLoading(true);
+    const { success, failed } = await bulkAddPlaylistUrls(urls);
+    setIsBulkLoading(false);
+
+    if (success > 0) {
+      toast({
+        title: "Success",
+        description: `Added ${success} playlist URLs successfully${failed > 0 ? `, ${failed} failed` : ''}`,
+      });
+      setBulkUrls("");
+      loadPlaylistUrls();
+    } else {
+      toast({
+        title: "Error",
+        description: "Failed to add any playlist URLs",
         variant: "destructive"
       });
     }
@@ -159,58 +206,112 @@ const Admin = () => {
         </div>
       </div>
 
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Add New Playlist URL</CardTitle>
-          <CardDescription>Add a new M3U playlist URL to fetch IPTV channels</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAddUrl} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  placeholder="My IPTV List"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="priority">Priority (lower loads first)</Label>
-                <Input
-                  id="priority"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={newPriority}
-                  onChange={(e) => setNewPriority(parseInt(e.target.value))}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="url">Playlist URL (M3U format)</Label>
-              <Input
-                id="url"
-                placeholder="https://example.com/playlist.m3u"
-                value={newUrl}
-                onChange={(e) => setNewUrl(e.target.value)}
-                required
-              />
-            </div>
-          </form>
-        </CardContent>
-        <CardFooter>
-          <Button 
-            onClick={handleAddUrl} 
-            disabled={isLoading || !newUrl || !newName}
-          >
+      <Tabs defaultValue="single" className="mb-8">
+        <TabsList className="mb-4">
+          <TabsTrigger value="single" className="flex items-center">
             <Plus className="h-4 w-4 mr-2" />
-            Add Playlist
-          </Button>
-        </CardFooter>
-      </Card>
+            Add Single Playlist
+          </TabsTrigger>
+          <TabsTrigger value="bulk" className="flex items-center">
+            <Upload className="h-4 w-4 mr-2" />
+            Bulk Upload
+          </TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="single">
+          <Card>
+            <CardHeader>
+              <CardTitle>Add New Playlist URL</CardTitle>
+              <CardDescription>Add a new M3U playlist URL to fetch IPTV channels</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleAddUrl} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name</Label>
+                    <Input
+                      id="name"
+                      placeholder="My IPTV List"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="priority">Priority (lower loads first)</Label>
+                    <Input
+                      id="priority"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={newPriority}
+                      onChange={(e) => setNewPriority(parseInt(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="url">Playlist URL (M3U format)</Label>
+                  <Input
+                    id="url"
+                    placeholder="https://example.com/playlist.m3u"
+                    value={newUrl}
+                    onChange={(e) => setNewUrl(e.target.value)}
+                    required
+                  />
+                </div>
+              </form>
+            </CardContent>
+            <CardFooter>
+              <Button 
+                onClick={handleAddUrl} 
+                disabled={isLoading || !newUrl || !newName}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Playlist
+              </Button>
+            </CardFooter>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="bulk">
+          <Card>
+            <CardHeader>
+              <CardTitle>Bulk Upload Playlists</CardTitle>
+              <CardDescription>
+                Add multiple M3U playlist URLs at once, one URL per line
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bulkUrls">Playlist URLs (one per line)</Label>
+                  <Textarea
+                    id="bulkUrls"
+                    placeholder="https://example.com/playlist1.m3u&#10;https://example.com/playlist2.m3u&#10;https://example.com/playlist3.m3u"
+                    value={bulkUrls}
+                    onChange={(e) => setBulkUrls(e.target.value)}
+                    rows={8}
+                    className="resize-y"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Tip: Enter one URL per line. URLs will be assigned sequential names (Playlist 1, Playlist 2, etc.).
+                </p>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button 
+                onClick={handleBulkUpload} 
+                disabled={isBulkLoading || !bulkUrls.trim()}
+                className="w-full"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {isBulkLoading ? 'Uploading...' : 'Upload All Playlists'}
+              </Button>
+            </CardFooter>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Card>
         <CardHeader>

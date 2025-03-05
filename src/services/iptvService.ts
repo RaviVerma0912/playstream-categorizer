@@ -1,4 +1,3 @@
-
 import { IPTVChannel, IPTVPlaylist, IPTVCategory, PlaylistUrl } from "@/types/iptv";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -31,13 +30,55 @@ export async function fetchPlaylist(): Promise<IPTVPlaylist> {
     if (!error && playlistUrls && playlistUrls.length > 0) {
       console.log(`Found ${playlistUrls.length} custom playlists in database`);
       
+      // Create an array to hold all channels and categories
+      let allChannels: IPTVChannel[] = [];
+      let categoriesMap: Record<string, IPTVChannel[]> = {};
+      
+      // Try to fetch all playlists
       for (const playlistItem of playlistUrls as PlaylistUrl[]) {
         console.log(`Trying custom playlist: ${playlistItem.url}`);
         const result = await tryFetchWithProxies(playlistItem.url);
+        
         if (result) {
           console.log(`Successfully fetched custom playlist: ${playlistItem.url}`);
-          return result;
+          
+          // Add channels to our combined list
+          allChannels = [...allChannels, ...result.allChannels];
+          
+          // Merge categories
+          for (const category of result.categories) {
+            if (!categoriesMap[category.name]) {
+              categoriesMap[category.name] = [];
+            }
+            categoriesMap[category.name] = [...categoriesMap[category.name], ...category.channels];
+          }
         }
+      }
+      
+      // If we have any channels, return the combined playlist
+      if (allChannels.length > 0) {
+        console.log(`Combined ${allChannels.length} channels from multiple playlists`);
+        
+        // Deduplicate channels by URL
+        const uniqueChannels = deduplicateChannels(allChannels);
+        console.log(`Deduplicated to ${uniqueChannels.length} unique channels`);
+        
+        // Convert categories map to array format
+        const categories = Object.entries(categoriesMap).map(([name, channels]) => {
+          // Deduplicate channels within each category
+          const uniqueCategoryChannels = deduplicateChannels(channels);
+          
+          return {
+            id: `category-${name.toLowerCase().replace(/\s+/g, '-')}`,
+            name,
+            channels: uniqueCategoryChannels,
+          };
+        });
+        
+        return {
+          categories,
+          allChannels: uniqueChannels,
+        };
       }
     } else {
       console.log("No custom playlists found in database or error occurred, using default playlists");
@@ -48,18 +89,73 @@ export async function fetchPlaylist(): Promise<IPTVPlaylist> {
   
   // If custom playlists fail, try default playlists
   console.log("Custom playlists failed or not available, trying default playlists...");
+  let allChannels: IPTVChannel[] = [];
+  let categoriesMap: Record<string, IPTVChannel[]> = {};
+  
   for (const defaultPlaylist of DEFAULT_PLAYLISTS) {
     console.log(`Trying default playlist: ${defaultPlaylist}`);
     const result = await tryFetchWithProxies(defaultPlaylist);
+    
     if (result) {
       console.log(`Successfully fetched default playlist: ${defaultPlaylist}`);
-      return result;
+      
+      // Add channels to our combined list
+      allChannels = [...allChannels, ...result.allChannels];
+      
+      // Merge categories
+      for (const category of result.categories) {
+        if (!categoriesMap[category.name]) {
+          categoriesMap[category.name] = [];
+        }
+        categoriesMap[category.name] = [...categoriesMap[category.name], ...category.channels];
+      }
     }
+  }
+  
+  // If we have any channels from default playlists, return the combined playlist
+  if (allChannels.length > 0) {
+    console.log(`Combined ${allChannels.length} channels from default playlists`);
+    
+    // Deduplicate channels
+    const uniqueChannels = deduplicateChannels(allChannels);
+    console.log(`Deduplicated to ${uniqueChannels.length} unique channels`);
+    
+    // Convert categories map to array format
+    const categories = Object.entries(categoriesMap).map(([name, channels]) => {
+      // Deduplicate channels within each category
+      const uniqueCategoryChannels = deduplicateChannels(channels);
+      
+      return {
+        id: `category-${name.toLowerCase().replace(/\s+/g, '-')}`,
+        name,
+        channels: uniqueCategoryChannels,
+      };
+    });
+    
+    return {
+      categories,
+      allChannels: uniqueChannels,
+    };
   }
   
   // If all remote fetches fail, return mock data
   console.log("All remote playlists failed, returning mock data");
   return fetchMockPlaylist();
+}
+
+// Helper function to deduplicate channels by URL
+function deduplicateChannels(channels: IPTVChannel[]): IPTVChannel[] {
+  const uniqueUrls = new Set<string>();
+  const uniqueChannels: IPTVChannel[] = [];
+  
+  for (const channel of channels) {
+    if (!uniqueUrls.has(channel.url)) {
+      uniqueUrls.add(channel.url);
+      uniqueChannels.push(channel);
+    }
+  }
+  
+  return uniqueChannels;
 }
 
 async function tryFetchWithProxies(playlistUrl: string): Promise<IPTVPlaylist | null> {
@@ -277,4 +373,37 @@ export async function getPlaylistUrls(): Promise<PlaylistUrl[]> {
     console.error('Error fetching playlist URLs:', err);
     return [];
   }
+}
+
+// Bulk import playlist URLs
+export async function bulkAddPlaylistUrls(urls: string[]): Promise<{ success: number; failed: number }> {
+  let success = 0;
+  let failed = 0;
+  
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i].trim();
+    if (!url) continue;
+    
+    try {
+      const { error } = await supabase
+        .from('playlist_urls')
+        .insert({
+          url,
+          name: `Playlist ${i + 1}`,
+          priority: 10 + i,
+          active: true
+        });
+      
+      if (!error) {
+        success++;
+      } else {
+        failed++;
+      }
+    } catch (err) {
+      console.error('Error adding playlist URL:', err);
+      failed++;
+    }
+  }
+  
+  return { success, failed };
 }
