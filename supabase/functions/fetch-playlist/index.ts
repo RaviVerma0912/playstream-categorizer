@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -25,9 +24,20 @@ serve(async (req) => {
     }
     
     const content = await response.text();
+    const contentType = response.headers.get('content-type') || '';
     
-    // Parse the playlist content
-    const playlist = parseM3U(content);
+    // Parse the playlist content based on content type
+    let playlist;
+    if (contentType.includes('application/json')) {
+      // Handle JSON format
+      playlist = parseJSON(content);
+    } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
+      // Handle XML format
+      playlist = parseXML(content);
+    } else {
+      // Default to M3U parsing for text/plain or unknown formats
+      playlist = parseM3U(content);
+    }
     
     // Cache the result in Supabase database
     await cachePlaylist(content);
@@ -236,6 +246,139 @@ function createClient(supabaseUrl: string, supabaseKey: string) {
   };
 }
 
+// Parse JSON format
+function parseJSON(content: string) {
+  try {
+    const jsonData = JSON.parse(content);
+    const channels = [];
+    const categories: Record<string, any[]> = {};
+    
+    // Try to determine the structure of the JSON
+    if (Array.isArray(jsonData)) {
+      // If it's an array of channels
+      jsonData.forEach((item, index) => {
+        const channel = {
+          id: item.id || `channel-${index}`,
+          name: item.name || item.title || `Channel ${index}`,
+          logo: item.logo || item.icon || item.img || item.image || item.thumbnail,
+          group: item.group || item.category || item.genre || "Uncategorized",
+          url: item.url || item.stream || item.streamUrl || item.link || item.source
+        };
+        
+        if (channel.url) {
+          channels.push(channel);
+          
+          // Add to category
+          if (!categories[channel.group]) {
+            categories[channel.group] = [];
+          }
+          categories[channel.group].push(channel);
+        }
+      });
+    } else if (jsonData.channels || jsonData.items || jsonData.streams) {
+      // If it has a channels or items property
+      const channelArray = jsonData.channels || jsonData.items || jsonData.streams || [];
+      
+      channelArray.forEach((item, index) => {
+        const channel = {
+          id: item.id || `channel-${index}`,
+          name: item.name || item.title || `Channel ${index}`,
+          logo: item.logo || item.icon || item.img || item.image || item.thumbnail,
+          group: item.group || item.category || item.genre || "Uncategorized",
+          url: item.url || item.stream || item.streamUrl || item.link || item.source
+        };
+        
+        if (channel.url) {
+          channels.push(channel);
+          
+          // Add to category
+          if (!categories[channel.group]) {
+            categories[channel.group] = [];
+          }
+          categories[channel.group].push(channel);
+        }
+      });
+    }
+    
+    // Convert categories object to array format
+    const categoriesArray = Object.entries(categories).map(([name, channels]) => ({
+      id: `category-${name.toLowerCase().replace(/\s+/g, '-')}`,
+      name,
+      channels,
+    }));
+    
+    return {
+      categories: categoriesArray,
+      allChannels: channels,
+    };
+  } catch (error) {
+    console.error("Error parsing JSON:", error);
+    // Fallback to M3U parsing
+    return parseM3U(content);
+  }
+}
+
+// Parse XML format
+function parseXML(content: string) {
+  try {
+    // Basic XML parsing using regex (for simplicity)
+    // In a real-world scenario, use a proper XML parser library
+    const channels = [];
+    const categories: Record<string, any[]> = {};
+    
+    // Extract channels using regex
+    const channelRegex = /<channel[^>]*>([\s\S]*?)<\/channel>/g;
+    let match;
+    let index = 0;
+    
+    while ((match = channelRegex.exec(content)) !== null) {
+      const channelContent = match[1];
+      
+      // Extract channel details
+      const nameMatch = /<name[^>]*>(.*?)<\/name>/i.exec(channelContent);
+      const logoMatch = /<logo[^>]*>(.*?)<\/logo>|<icon[^>]*>(.*?)<\/icon>/i.exec(channelContent);
+      const urlMatch = /<url[^>]*>(.*?)<\/url>|<stream[^>]*>(.*?)<\/stream>/i.exec(channelContent);
+      const groupMatch = /<group[^>]*>(.*?)<\/group>|<category[^>]*>(.*?)<\/category>/i.exec(channelContent);
+      
+      const channel = {
+        id: `channel-${index}`,
+        name: nameMatch ? nameMatch[1] : `Channel ${index}`,
+        logo: logoMatch ? (logoMatch[1] || logoMatch[2]) : undefined,
+        group: groupMatch ? (groupMatch[1] || groupMatch[2] || "Uncategorized") : "Uncategorized",
+        url: urlMatch ? (urlMatch[1] || urlMatch[2]) : "",
+      };
+      
+      if (channel.url) {
+        channels.push(channel);
+        
+        // Add to category
+        if (!categories[channel.group]) {
+          categories[channel.group] = [];
+        }
+        categories[channel.group].push(channel);
+        index++;
+      }
+    }
+    
+    // Convert categories object to array format
+    const categoriesArray = Object.entries(categories).map(([name, channels]) => ({
+      id: `category-${name.toLowerCase().replace(/\s+/g, '-')}`,
+      name,
+      channels,
+    }));
+    
+    return {
+      categories: categoriesArray,
+      allChannels: channels,
+    };
+  } catch (error) {
+    console.error("Error parsing XML:", error);
+    // Fallback to M3U parsing
+    return parseM3U(content);
+  }
+}
+
+// Parse M3U format
 function parseM3U(content: string) {
   const lines = content.split("\n");
   const channels = [];
@@ -249,13 +392,13 @@ function parseM3U(content: string) {
     // Skip empty lines
     if (!line) continue;
     
-    // Header line
-    if (line.startsWith("#EXTINF:")) {
+    // Header line (could be different formats)
+    if (line.startsWith("#EXTINF:") || line.startsWith("#EXTM3U:") || line.includes('tvg-name=') || line.includes('tvg-id=')) {
       // Parse channel info
       currentChannel = {};
       
       // Extract channel name
-      const nameMatch = line.match(/,(.+)$/);
+      const nameMatch = line.match(/,(.+)$/) || line.match(/tvg-name="([^"]*)"/);
       if (nameMatch && nameMatch[1]) {
         currentChannel.name = nameMatch[1].trim();
       }
@@ -268,7 +411,7 @@ function parseM3U(content: string) {
       const logoMatch = line.match(/tvg-logo="([^"]*)"/);
       currentChannel.logo = logoMatch && logoMatch[1] ? logoMatch[1] : undefined;
       
-    } else if (line.startsWith("http") && currentChannel) {
+    } else if ((line.startsWith("http") || line.startsWith("https") || line.startsWith("rtmp") || line.startsWith("udp")) && currentChannel) {
       // This is a URL for the current channel
       currentChannel.url = line;
       currentChannel.id = `channel-${channels.length}`;

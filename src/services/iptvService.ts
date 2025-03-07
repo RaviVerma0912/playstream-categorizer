@@ -167,7 +167,7 @@ async function tryFetchWithProxies(playlistUrl: string): Promise<IPTVPlaylist | 
       const response = await fetch(fullUrl, {
         method: 'GET',
         headers: {
-          'Accept': 'text/plain, application/x-mpegURL, */*',
+          'Accept': 'text/plain, application/x-mpegURL, application/json, text/xml, */*',
         },
         // Add a timeout to prevent hanging requests
         signal: AbortSignal.timeout(10000)
@@ -179,21 +179,106 @@ async function tryFetchWithProxies(playlistUrl: string): Promise<IPTVPlaylist | 
       }
       
       console.log(`Success with ${proxy ? proxy : 'direct access'}`);
-      const data = await response.text();
       
-      // If the data doesn't look like an M3U file, skip it
-      if (!data.trim().startsWith('#EXTM3U')) {
-        console.warn('Response doesn\'t appear to be a valid M3U file');
-        continue;
+      // Check the content type
+      const contentType = response.headers.get('content-type') || '';
+      
+      // Handle different content types
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        return parsePlaylistJSON(data);
+      } else {
+        const data = await response.text();
+        
+        // If the data doesn't look like an M3U file but looks like JSON, try parsing as JSON
+        if (!data.trim().startsWith('#EXTM3U') && data.trim().startsWith('{')) {
+          try {
+            const jsonData = JSON.parse(data);
+            return parsePlaylistJSON(jsonData);
+          } catch (e) {
+            // If JSON parsing fails, continue with M3U parsing
+            console.warn('JSON parsing failed, falling back to M3U parsing');
+          }
+        }
+        
+        // Default to M3U parsing
+        return parseM3U(data);
       }
-      
-      return parseM3U(data);
     } catch (error) {
       console.warn(`Error with ${proxy ? proxy : 'direct access'}:`, error);
     }
   }
   
   return null;
+}
+
+function parsePlaylistJSON(jsonData: any): IPTVPlaylist {
+  const channels: IPTVChannel[] = [];
+  const categories: Record<string, IPTVChannel[]> = {};
+  
+  try {
+    // Try to determine the structure of the JSON
+    if (Array.isArray(jsonData)) {
+      // If it's an array of channels
+      jsonData.forEach((item, index) => {
+        const channel = {
+          id: item.id || `channel-${index}`,
+          name: item.name || item.title || `Channel ${index}`,
+          logo: item.logo || item.icon || item.img || item.image || item.thumbnail,
+          group: item.group || item.category || item.genre || "Uncategorized",
+          url: item.url || item.stream || item.streamUrl || item.link || item.source
+        };
+        
+        if (channel.url) {
+          channels.push(channel);
+          
+          // Add to category
+          if (!categories[channel.group]) {
+            categories[channel.group] = [];
+          }
+          categories[channel.group].push(channel);
+        }
+      });
+    } else if (jsonData.channels || jsonData.items || jsonData.streams) {
+      // If it has a channels or items property
+      const channelArray = jsonData.channels || jsonData.items || jsonData.streams || [];
+      
+      channelArray.forEach((item: any, index: number) => {
+        const channel = {
+          id: item.id || `channel-${index}`,
+          name: item.name || item.title || `Channel ${index}`,
+          logo: item.logo || item.icon || item.img || item.image || item.thumbnail,
+          group: item.group || item.category || item.genre || "Uncategorized",
+          url: item.url || item.stream || item.streamUrl || item.link || item.source
+        };
+        
+        if (channel.url) {
+          channels.push(channel);
+          
+          // Add to category
+          if (!categories[channel.group]) {
+            categories[channel.group] = [];
+          }
+          categories[channel.group].push(channel);
+        }
+      });
+    }
+  } catch (error) {
+    console.error("Error processing JSON playlist:", error);
+  }
+  
+  // Convert categories object to array format
+  const categoriesArray = Object.entries(categories).map(([name, channelsList]) => ({
+    id: `category-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    name,
+    channels: channelsList,
+  }));
+  
+  console.log(`Parsed JSON Playlist: Found ${channels.length} channels in ${categoriesArray.length} categories`);
+  return {
+    categories: categoriesArray,
+    allChannels: channels,
+  };
 }
 
 function parseM3U(content: string): IPTVPlaylist {

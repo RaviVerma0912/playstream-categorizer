@@ -222,7 +222,7 @@ const Admin = () => {
           <Card>
             <CardHeader>
               <CardTitle>Add New Playlist URL</CardTitle>
-              <CardDescription>Add a new M3U playlist URL to fetch IPTV channels</CardDescription>
+              <CardDescription>Add a new playlist URL to fetch IPTV channels (supports various formats)</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleAddUrl} className="space-y-4">
@@ -250,14 +250,17 @@ const Admin = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="url">Playlist URL (M3U format)</Label>
+                  <Label htmlFor="url">Playlist URL</Label>
                   <Input
                     id="url"
-                    placeholder="https://example.com/playlist.m3u"
+                    placeholder="https://example.com/playlist"
                     value={newUrl}
                     onChange={(e) => setNewUrl(e.target.value)}
                     required
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Enter any playlist URL. The system will try to process various formats including M3U, JSON, XML, and others.
+                  </p>
                 </div>
               </form>
             </CardContent>
@@ -278,7 +281,7 @@ const Admin = () => {
             <CardHeader>
               <CardTitle>Bulk Upload Playlists</CardTitle>
               <CardDescription>
-                Add multiple M3U playlist URLs at once, one URL per line
+                Add multiple playlist URLs at once, one URL per line (supports various formats)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -287,7 +290,7 @@ const Admin = () => {
                   <Label htmlFor="bulkUrls">Playlist URLs (one per line)</Label>
                   <Textarea
                     id="bulkUrls"
-                    placeholder="https://example.com/playlist1.m3u&#10;https://example.com/playlist2.m3u&#10;https://example.com/playlist3.m3u"
+                    placeholder="https://example.com/playlist1&#10;https://example.com/playlist2&#10;https://example.com/playlist3"
                     value={bulkUrls}
                     onChange={(e) => setBulkUrls(e.target.value)}
                     rows={8}
@@ -295,7 +298,8 @@ const Admin = () => {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Tip: Enter one URL per line. URLs will be assigned sequential names (Playlist 1, Playlist 2, etc.).
+                  Tip: Enter one URL per line. URLs will be assigned sequential names (Playlist 1, Playlist 2, etc.). 
+                  The system will attempt to process various playlist formats.
                 </p>
               </div>
             </CardContent>
